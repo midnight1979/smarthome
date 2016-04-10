@@ -973,6 +973,7 @@ void HotWaterTemp()
     HotWater_Temp = readCelsius();
     HotWater_Temp = (oldsensorValue * (averageFactor - 1) + HotWater_Temp) / averageFactor;
     //y1 = map(HotWater_Temp + 53, 0, 120, 63, 18);                // Вместо HotWater_Temp + 53 - вывести показания датчика температуры воздуха
+    //map - на заметку взять!
   }
 }
 
