@@ -227,7 +227,7 @@ int HotWaterTankPercent   = 0;              // Объем воды в % для �
 
 //------ Переменные для работы с таймерами ---------
 int progress                      = 0;      // Переменная для цикличного индикатора процесса работы (анимирования символов)
-unsigned long previousMillis      = 0;      // will store last time LED was updated
+//unsigned long previousMillis      = 0;      // will store last time LED was updated
 unsigned long previousMillisBLK   = 0;      // Счетчик для регулировки подсветки LCD12864 (режим сна через BrightnessInterval)
 unsigned long currentMillis       = 0;
 
@@ -249,7 +249,7 @@ int CurrentPage = 1;                       // Текущая страница: 1
 const int MainTankRelay      = 0;          // Насосная станция (0-й порт)
 const int StreetTankRelay    = 1;          // Насос уличных емкостей (1-й порт)
 const int HotWaterTankRelay  = 2;          // Электроклапан емкости с горячей водой (2-порт)
-const int ChinkRelay         = 4;          // Скважинный насос
+const int ChinkRelay         = 3;          // Скважинный насос
 
 //----------------------------- Температуры --------------------------------
 int HotWater_Temp            = 0;          // Температура горячей воды
@@ -284,6 +284,9 @@ void setup()
   pcf.pinMode(6, OUTPUT);
   pcf.pinMode(7, OUTPUT);
   pcf.set();
+
+  // Проводим сброс состояния портов на расширителе PCF8574
+  PCFReset();
 
   HotWaterTankIsBlocked   = EEPROM.read(0);
   MainTankStatus          = EEPROM.read(1);
@@ -436,16 +439,29 @@ void HotWaterTankLevel()
   //HotWaterTankPercent = 3;  //максимум
 }
 
+// Обнуление (выключение) всех портов PCF8574
+void PCFReset()
+{
+  pcf.digitalWrite(0, LOW);
+  pcf.digitalWrite(1, LOW);
+  pcf.digitalWrite(2, LOW);
+  pcf.digitalWrite(3, LOW);
+  pcf.digitalWrite(4, LOW);
+  pcf.digitalWrite(5, LOW);
+  pcf.digitalWrite(6, LOW);
+  pcf.digitalWrite(7, LOW);
+}
+
 // Включение порта на PCF8574
 void TurnOn(int val)
 {
-  pcf.digitalWrite(val, LOW);
+  pcf.digitalWrite(val, HIGH);
 }
 
 // Выключение порта на PCF8574
 void TurnOff(int val)
 {
-  pcf.digitalWrite(val, HIGH);
+  pcf.digitalWrite(val, LOW);
 }
 
 // Запись статусов емкостей и значений портов вывода (реле) в EEPROM
@@ -801,16 +817,16 @@ void ProcessPages()
     } while ( u8g.nextPage() );
   }
 
-//  if (CurrentPage == 3)
-//  {
-//    u8g.sleepOff();
-//    u8g.firstPage();
-//    do {
-//      //Блок отображения страницы №3 на OLED
-//      SleepPage();
-//
-//    } while ( u8g.nextPage() );
-//  }
+  //  if (CurrentPage == 3)
+  //  {
+  //    u8g.sleepOff();
+  //    u8g.firstPage();
+  //    do {
+  //      //Блок отображения страницы №3 на OLED
+  //      SleepPage();
+  //
+  //    } while ( u8g.nextPage() );
+  //  }
 
   //  if (CurrentPage == 4)
   //  {
