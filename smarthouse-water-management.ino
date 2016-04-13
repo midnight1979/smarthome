@@ -253,9 +253,9 @@ const int ChinkRelay         = 3;          // Скважинный насос
 
 // Резерв портов на блоке реле - в последующем дать переменным нормальные имена
 const int port5 = 4;
-const int port6 = 4;
-const int port7 = 4;
-const int port8 = 4;
+const int port6 = 5;
+const int port7 = 6;
+const int port8 = 7;
 
 //----------------------------- Температуры --------------------------------
 int HotWater_Temp            = 0;          // Температура горячей воды
