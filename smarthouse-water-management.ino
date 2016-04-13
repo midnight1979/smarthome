@@ -251,6 +251,12 @@ const int StreetTankRelay    = 1;          // Насос уличных емко
 const int HotWaterTankRelay  = 2;          // Электроклапан емкости с горячей водой (2-порт)
 const int ChinkRelay         = 3;          // Скважинный насос
 
+// Резерв портов на блоке реле - в последующем дать переменным нормальные имена
+const int port5 = 4;
+const int port6 = 4;
+const int port7 = 4;
+const int port8 = 4;
+
 //----------------------------- Температуры --------------------------------
 int HotWater_Temp            = 0;          // Температура горячей воды
 int HomeAir_Temp             = 0;
