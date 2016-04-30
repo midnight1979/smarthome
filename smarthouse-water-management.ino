@@ -161,10 +161,10 @@ const uint8_t ico_eye[] U8G_PROGMEM = {
 };
 /* END ------------------- Иконки и значки -------------------------- END */
 
-int temp_cm1, cm1 = 0;                               // Расстояние от ультразвукового датчика до поверхности воды в домашней емкости (в см.)
-int temp_cm2, cm2 = 0;                               // Расстояние от ультразвукового датчика до поверхности воды в уличной емкости (в см.)
+int temp_cm1, cm1 = 0;                     // Расстояние от ультразвукового датчика до поверхности воды в домашней емкости (в см.)
+int temp_cm2, cm2 = 0;                     // Расстояние от ультразвукового датчика до поверхности воды в уличной емкости (в см.)
 
-const byte averageFactor = 4;               // коэффициент сглаживания показаний (0 = не сглаживать) - чем выше, тем больше "инерционность" - это видно на индикаторах
+const int averageFactor = 4;               // коэффициент сглаживания показаний (0 = не сглаживать) - чем выше, тем больше "инерционность" - это видно на индикаторах
 
 //-------------------------------------------------------- Параметры емкостей ----------------------------------------------------------------------
 //--------- Домашняя емкость --------
@@ -418,26 +418,26 @@ void HotWaterTankLevel()
 // Обнуление (выключение) всех портов PCF8574
 void PCFReset()
 {
-  pcf.digitalWrite(0, LOW);
-  pcf.digitalWrite(1, LOW);
-  pcf.digitalWrite(2, LOW);
-  pcf.digitalWrite(3, LOW);
-  pcf.digitalWrite(4, LOW);
-  pcf.digitalWrite(5, LOW);
-  pcf.digitalWrite(6, LOW);
-  pcf.digitalWrite(7, LOW);
+  pcf.digitalWrite(0, HIGH);
+  pcf.digitalWrite(1, HIGH);
+  pcf.digitalWrite(2, HIGH);
+  pcf.digitalWrite(3, HIGH);
+  pcf.digitalWrite(4, HIGH);
+  pcf.digitalWrite(5, HIGH);
+  pcf.digitalWrite(6, HIGH);
+  pcf.digitalWrite(7, HIGH);
 }
 
 // Включение порта на PCF8574
 void TurnOn(int val)
 {
-  pcf.digitalWrite(val, HIGH);
+  pcf.digitalWrite(val, LOW);
 }
 
 // Выключение порта на PCF8574
 void TurnOff(int val)
 {
-  pcf.digitalWrite(val, LOW);
+  pcf.digitalWrite(val, HIGH);
 }
 
 // Запись статусов емкостей и значений портов вывода (реле) в EEPROM
@@ -559,7 +559,7 @@ void page2()
   u8g.setFont(u8g_font_unifont_0_8);
   u8g.setPrintPos(50, 12);
   u8g.print(sauna);
-  u8g.drawVLine(64, 16, 48);
+  //u8g.drawVLine(64, 16, 48);
 
   u8g.setPrintPos(20, 28);
   u8g.print("100");
@@ -569,20 +569,20 @@ void page2()
   u8g.print("  0");
 
   // Иконка термометра №1 - тем.воздуха
-  u8g.drawBitmapP(68, 20, 2, 16, ico_air_temp);
+  u8g.drawBitmapP(62, 18, 2, 16, ico_air_temp);
 
   // Значение температуры воздуха в парилке
   u8g.setFont(u8g_font_profont22);
-  u8g.setPrintPos(88, 34);
+  u8g.setPrintPos(80, 32);
   //u8g.print(HotWater_Temp + 53);
   u8g.print(HomeAir_Temp);
 
   // Иконка термометра №2 - температура воды в баке с горячей водой
-  u8g.drawBitmapP(68, 48, 2, 16, ico_water_temp);
+  u8g.drawBitmapP(62, 45, 2, 16, ico_water_temp);
 
   // Значение температуры бака с горячей водой
   u8g.setFont(u8g_font_profont22);
-  u8g.setPrintPos(88, 61);
+  u8g.setPrintPos(80, 61);
   u8g.print(HotWater_Temp);
 
   // Уровень емкости с горячей водой (градация 0-50-100%) - всего три уровня
@@ -971,6 +971,7 @@ void HotWaterTemp()
   {
     HotWater_Temp = SlaveHotWater_temp;
     HotWater_Temp = (oldsensorValue * (averageFactor - 1) + HotWater_Temp) / averageFactor;
+
     //y1 = map(HotWater_Temp + 53, 0, 120, 63, 18);                // Вместо HotWater_Temp + 53 - вывести показания датчика температуры воздуха
     //map - на заметку взять!
   }
@@ -1003,6 +1004,6 @@ void i2cReadSlave()
   dataA = respVals[3];
   dataB = respVals[4];
 
-  SlaveHotWater_temp  = dataA + (dataB * 0.1);   // Собираем float из целой и дробной частей
+  SlaveHotWater_temp  = dataA +  averageFactor + (dataB * 0.1);   // Собираем float из целой и дробной частей
 
 }
