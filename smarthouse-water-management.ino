@@ -164,22 +164,27 @@ const uint8_t ico_eye[] U8G_PROGMEM = {
 int temp_cm1, cm1 = 0;                     // Расстояние от ультразвукового датчика до поверхности воды в домашней емкости (в см.)
 int temp_cm2, cm2 = 0;                     // Расстояние от ультразвукового датчика до поверхности воды в уличной емкости (в см.)
 
+// Качество воды
+int wq_raw                        = 0;
+int StreetTank_WaterQuality_temp  = 0;          // Качество воды в уличных емкостях temp
+
 const int averageFactor = 4;               // коэффициент сглаживания показаний (0 = не сглаживать) - чем выше, тем больше "инерционность" - это видно на индикаторах
 
 //-------------------------------------------------------- Параметры емкостей ----------------------------------------------------------------------
 //--------- Домашняя емкость --------
-int MainTank_Height       = 94;            // Высота домашней емкости в см.
-int MainTank_Max          = 5;              // Максимальный уровень воды домашней емкости в см. (от датчика до поверхности воды)
+int MainTank_Height       = 92;             // Высота домашней емкости в см.
+int MainTank_Max          = 7;              // Максимальный уровень воды домашней емкости в см. (от датчика до поверхности воды)
 int MainTank_MinHotWater  = 60;             // Минимальное количество воды в домашней емкости в % чтобы заблокировать пополнение бака горячей воды
 int MainTank_FillIn       = 80;             // Уровень воды в домашней емкости в % при котором включается режим наполнения
 int MainTank_MinBlock     = 10;             // Минимальное количество воды в домашней емкости в % чтобы заблокировать работу насосной станции
 int HotWater_Unblock      = 70;             // Количество воды в домашней емкости в % при котором разблокируется пополнение бака горячей воды
 
 //-------- Уличная емкость ----------
-int StreetTank_Height         = 94;        // Высота домашней емкости в см.
-int StreetTank_Max            = 5;          // Максимальный уровень воды домашней емкости в см. (от датчика до поверхности воды)
+int StreetTank_Height         = 98;         // Высота домашней емкости в см.
+int StreetTank_Max            = 10;         // Максимальный уровень воды домашней емкости в см. (от датчика до поверхности воды)
 int StreetTank_MinBlock       = 10;         // Минимальное количество воды уличной емкости в % чтобы заблокировать работу насоса
-int StreetTank_WaterQuality   = 93;         // Качество воды в уличных емкостях (прозрачность)
+
+int StreetTank_WaterQuality   = 0;          // Качество воды в уличных емкостях (прозрачность)
 
 //-------- Статусы емкостей ---------
 int MainTankStatus = 1;                     // Статус домашней емкости
@@ -230,7 +235,7 @@ int dataA                 = 0;    // Переменная для целой ча
 int dataB                 = 0;    // Переменная для дробной части температуры
 
 // Температура воздуха с модуля RTC
-int   HomeAir_Temp              = 0;
+int HomeAir_Temp              = 0;
 
 void setup()
 {
@@ -337,15 +342,15 @@ void setup()
 void loop()
 {
 
-  if (Serial.available() > 0) {  //если есть доступные данные
-    // считываем байт
-    //StreetTank_WaterQuality = Serial.parseInt();
-    HotWaterTankPercent = Serial.parseInt();
-    // отсылаем то, что получили
-    Serial.print("I received: ");
-    //Serial.println(StreetTank_WaterQuality, DEC);
-    Serial.println(HotWaterTankPercent, DEC);
-  }
+  //  if (Serial.available() > 0) {  //если есть доступные данные
+  //    // считываем байт
+  //    //StreetTank_WaterQuality = Serial.parseInt();
+  //    HotWaterTankPercent = Serial.parseInt();
+  //    // отсылаем то, что получили
+  //    Serial.print("I received: ");
+  //    //Serial.println(StreetTank_WaterQuality, DEC);
+  //    Serial.println(HotWaterTankPercent, DEC);
+  //  }
 
   // Запрос к Slave-контроллеру для получения показаний датчиков
   i2cReadSlave();
@@ -359,11 +364,12 @@ void loop()
   // Отображение уровня воды в емкостях
   MainTankLevel();
   StreetTankLevel();
-  HotWaterTankLevel();
 
   // Отображение температуры с термопары на MAX6675 (температура в баке с горячей водой) и с DS3231 (температура в доме)
   HotWaterTemp();
   HomeAirTemp();
+
+  StreetTankWaterQualityCheck();
 
   // Вывод страниц на OLED
   ProcessPages();
@@ -380,14 +386,21 @@ void MainTankLevel()
 {
   int oldsensorValue = cm1;
   cm1 = temp_cm1;
-  //cm1 = ultrasonic1.Ranging(CM);
+  //  Serial.print("CM1 before: ");
+  //  Serial.print(cm1);
+  //  Serial.println();
 
   if ((cm1 > MainTank_Height) || (cm1 < 0))
   {
-    cm1 = MainTank_Height + MainTank_Max + averageFactor;
+    cm1 = MainTank_Height;
   }
+
   cm1 = (oldsensorValue * (averageFactor - 1) + cm1) / averageFactor;
-  MainTankPercent = 100 - ((cm1 - MainTank_Max) * 100 / MainTank_Height);             //Текущий уровень в %
+
+  MainTankPercent = 100 - ((cm1 - MainTank_Max) * 100 / (MainTank_Height - MainTank_Max));             //Текущий уровень в %
+  //  Serial.print("CM1 after: ");
+  //  Serial.print(cm1);
+  //  Serial.println();
 }
 
 // Получение уровня уличной емкости в %
@@ -395,24 +408,19 @@ void StreetTankLevel()
 {
   int oldsensorValue = cm2;
   cm2 = temp_cm2;
-  //cm2 = ultrasonic2.Ranging(CM);
+  //  Serial.print("CM2 before: ");
+  //  Serial.print(cm2);
+  //  Serial.println();
 
   if ((cm2 > StreetTank_Height) || (cm2 < 0))
   {
-    cm2 = StreetTank_Height + StreetTank_Max + averageFactor;
+    cm2 = StreetTank_Height;
   }
   cm2 = (oldsensorValue * (averageFactor - 1) + cm2) / averageFactor;
-  StreetTankPercent = 100 - ((cm2 - StreetTank_Max) * 100 / StreetTank_Height);             //Текущий уровень в %
-}
-
-// Получение уровня бака с горячей водой в %
-// 4 фиксированных положения "пусто = 0", "минимум = 1", "середина = 2", "максимум = 3"
-void HotWaterTankLevel()
-{
-  //HotWaterTankPercent = 0;  //пусто
-  //HotWaterTankPercent = 1;  //минимум
-  //HotWaterTankPercent = 2;  //середина
-  //HotWaterTankPercent = 3;  //максимум
+  StreetTankPercent = 100 - ((cm2 - StreetTank_Max) * 100 / (StreetTank_Height - StreetTank_Max));       //Текущий уровень в %
+  //  Serial.print("CM2 after: ");
+  //  Serial.print(cm2);
+  //  Serial.println();
 }
 
 // Обнуление (выключение) всех портов PCF8574
@@ -979,13 +987,13 @@ void HotWaterTemp()
 
 void i2cReadSlave()
 {
-  int respVals[5];
-  Wire.requestFrom(8, 5);     // Запрашиваем 5 байт из Slave-контроллера по i2c адрес #8
+  int respVals[6];
+  Wire.requestFrom(8, 6);     // Запрашиваем 6 байт из Slave-контроллера по i2c адрес #8
   uint8_t respIoIndex = 0;
 
   while (Wire.available())
   {
-    for (byte r = 0; r < 5; r++)
+    for (byte r = 0; r < 6; r++)
       if (Wire.available()) {
         respVals[respIoIndex] = (uint8_t)Wire.read();
         respIoIndex++;
@@ -994,16 +1002,34 @@ void i2cReadSlave()
         // log or handle error: "missing read"; if you are not going to do so use r index instead of respIoIndex and delete respoIoIndex from this for loop
         break;
       }
+
+    temp_cm1            = respVals[0];    // Значение уровня в см. для домашней емкости
+    temp_cm2            = respVals[1];    // Значение уровня в см. для уличной емкости
+    HotWaterTankPercent = respVals[2];    // Значение уровня в баке с горячей водой
+
+    /* Значение температуры с термопары MAX6675 */
+    dataA = respVals[3];
+    dataB = respVals[4];
+
+    SlaveHotWater_temp  = dataA +  averageFactor + (dataB * 0.1);   // Собираем float из целой и дробной частей
+
+    wq_raw = respVals[5];
   }
 
-  temp_cm1            = respVals[0];    // Значение уровня в см. для домашней емкости
-  temp_cm2            = respVals[1];    // Значение уровня в см. для уличной емкости
-  HotWaterTankPercent = respVals[2];    // Значение уровня в баке с горячей водой
+}
 
-  /* Значение температуры с термопары MAX6675 */
-  dataA = respVals[3];
-  dataB = respVals[4];
+// Получение уровня домашней емкости в %
+void StreetTankWaterQualityCheck()
+{
+  int oldsensorValue = StreetTank_WaterQuality;
+  //  Serial.print("STQ_raw: ");
+  //  Serial.print(wq_raw);
+  //  Serial.println();
 
-  SlaveHotWater_temp  = dataA +  averageFactor + (dataB * 0.1);   // Собираем float из целой и дробной частей
+  StreetTank_WaterQuality  = wq_raw;
+  StreetTank_WaterQuality  = (oldsensorValue * (averageFactor - 1) + StreetTank_WaterQuality) / averageFactor;
 
+  //  Serial.print("STQ: ");
+  //  Serial.print(StreetTank_WaterQuality);
+  //  Serial.println();
 }
