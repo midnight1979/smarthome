@@ -18,11 +18,13 @@ int LongTapNext = 0;                      // Флаг для длительно�
 
 // Инициализация LCD12864 (SPI)
 U8GLIB_ST7920_128X64_4X u8g(13, 5, 4);
-#define BLK 3                             // PIN(3) в Arduino Nano с PWM - используется для регулировки подсветки LCD12864
-int WorkBrightness = 170;                 // Значение яркости LCD12864 в рабочем режиме
-int SleepBrightness = 10;                 // Значение яркости LCD12864 в спящем режиме
-bool SleepMode = false;                   // Текщий режим - "Режим сна"
-const int BrightnessInterval = 30000;     // 30 секунд интервал для перехода в режим сна
+#define BLK 3                               // PIN(3) в Arduino Nano с PWM - используется для регулировки подсветки LCD12864
+const int WorkBrightness = 170;             // Значение яркости LCD12864 в рабочем режиме
+const int SleepBrightness = 10;             // Значение яркости LCD12864 в спящем режиме
+bool SleepMode = false;                     // Текщий режим - "Режим сна"
+const int BrightnessInterval = 30000;       // 30 секунд интервал для перехода в режим сна
+const int temperature_change_timer = 5000;  // Таймер смены отображения показаний температуры на странице 2 (баня) - температура воздуха/температура воды
+bool tmpChange = false;
 
 // Инициализация расширителя портов PCF8574
 PCF8574 pcf;
@@ -118,6 +120,27 @@ const uint8_t ico_air_temp[] U8G_PROGMEM =
   0x3C, 0x00, //   ####
 };
 
+
+const uint8_t ico_stones_temp[] U8G_PROGMEM =
+{
+  0x03, 0xE6, //       #####  ##
+  0x02, 0x49, //       #  #  #  #
+  0x02, 0xE9, //       # ### #  #
+  0x02, 0x46, //       #  #   ##
+  0x02, 0xE0, //       # ###
+  0x02, 0x40, //       #  #
+  0xFE, 0xFE, // ####### #######
+  0xD6, 0x56, // ## # ##  # # ##
+  0xAA, 0x6A, // # # # #  ## # #
+  0xFF, 0xFF, // ################
+  0x28, 0x11, //   # #      #   #
+  0x28, 0x11, //   # #      #   #
+  0x3C, 0x3F, //   ####    ######
+  0xFE, 0x74, // #######  ### #
+  0x8F, 0xE4, // #   #######  #
+  0xFF, 0xFC, // ##############
+};
+
 const uint8_t left_arrow[] U8G_PROGMEM = {
   // @0 '3' (5 pixels wide)
   0x08, //     #
@@ -165,9 +188,7 @@ int temp_cm1, cm1 = 0;                     // Расстояние от ульт
 int temp_cm2, cm2 = 0;                     // Расстояние от ультразвукового датчика до поверхности воды в уличной емкости (в см.)
 
 // Качество воды
-int wq_raw                        = 0;
-int StreetTank_WaterQuality_temp  = 0;          // Качество воды в уличных емкостях temp
-
+int wq_raw              = 0;               // Показания датчика прозрачности воды в уличной емкости, полученные со Slave-контроллера
 const int averageFactor = 4;               // коэффициент сглаживания показаний (0 = не сглаживать) - чем выше, тем больше "инерционность" - это видно на индикаторах
 
 //-------------------------------------------------------- Параметры емкостей ----------------------------------------------------------------------
@@ -183,7 +204,6 @@ int HotWater_Unblock      = 70;             // Количество воды в 
 int StreetTank_Height         = 98;         // Высота домашней емкости в см.
 int StreetTank_Max            = 10;         // Максимальный уровень воды домашней емкости в см. (от датчика до поверхности воды)
 int StreetTank_MinBlock       = 10;         // Минимальное количество воды уличной емкости в % чтобы заблокировать работу насоса
-
 int StreetTank_WaterQuality   = 0;          // Качество воды в уличных емкостях (прозрачность)
 
 //-------- Статусы емкостей ---------
@@ -199,15 +219,8 @@ int HotWaterTankPercent   = 0;              // Объем воды в % для �
 //------ Переменные для работы с таймерами ---------
 int progress                      = 0;      // Переменная для цикличного индикатора процесса работы (анимирования символов)
 unsigned long previousMillisBLK   = 0;      // Счетчик для регулировки подсветки LCD12864 (режим сна через BrightnessInterval)
+unsigned long previousMillisTMP   = 0;      // Счетчик смены показаний температуры
 unsigned long currentMillis       = 0;
-
-// Реализация таймера с заданным интервалом - пока закомментировано
-//const long interval = 5000;                 // Интервал таймера
-//unsigned long previousMillis      = 0;      // will store last time LED was updated
-
-//----------- Переменные для графиков --------------
-//int x1 = 0;                                 // Координата графика page3() - график температуры воздуха
-//int y1 = 0;
 
 // Блокировки емкостей и насосов
 bool HotWaterTankIsBlocked = false;         // Заблокировано ли пополнение бака горячей воды
@@ -229,13 +242,18 @@ const int port7 = 6;
 const int port8 = 7;
 
 // ----------------------------- Температуры --------------------------------
-float SlaveHotWater_temp  = 0;    // Температура полученная со Slave-контроллера
-float HotWater_Temp       = 0;    // Температура горячей воды - используется для усреднения значений
-int dataA                 = 0;    // Переменная для целой части температуры
-int dataB                 = 0;    // Переменная для дробной части температуры
+int sauna_stones_temp_Raw     = 0;    // Температура термопары из каменки, полученная со Slave-контроллера
+int sauna_stones_Temp         = 0;    // Итоговая температура термопары из каменки - используется для усреднения значений
+int dataA                 = 0;    // Upper byte температуры
+int dataB                 = 0;    // Lower Byte температуры
 
 // Температура воздуха с модуля RTC
-int HomeAir_Temp              = 0;
+int home_air_Temp  = 0;
+
+// Температуры с терморезисторов
+int sauna_air_Temp    = 0;        // Температура воздуха в парилке
+int sauna_water_Temp  = 0;        // Температура воды в парилке
+
 
 void setup()
 {
@@ -264,7 +282,7 @@ void setup()
   pcf.pinMode(7, OUTPUT);
   pcf.set();
 
-  // Проводим сброс состояния портов на расширителе PCF8574
+  // Проводим сброс выходов на PCF8574 - изначально после включения на всех выходах HIGH
   PCFReset();
 
   HotWaterTankIsBlocked   = EEPROM.read(0);
@@ -310,26 +328,6 @@ void setup()
   CurrentPage = 1;                // Инициализируем всегда 1-ю страницу при включении
 
   Serial.begin(9600); // Starting Serial Terminal
-  //  Serial.println("----- Initializing system -----");
-  //  Serial.print("Hot water tank block-status: ");
-  //  Serial.print(HotWaterTankIsBlocked);
-  //  Serial.println();
-  //  Serial.print("MainTank status: ");
-  //  Serial.print(TankStatus(MainTankStatus));
-  //  Serial.println();
-  //  Serial.print("StretTank status: ");
-  //  Serial.print(TankStatus(StreetTankStatus));
-  //  Serial.println();
-  //  Serial.print("StretPump status: ");
-  //  Serial.print(StreetPumpIsBlocked);
-  //  Serial.println();
-  //
-  //  Serial.print("HotWaterTank status: ");
-  //  Serial.print(TankStatus(HotWaterTankStatus));
-  //  Serial.println();
-  //  Serial.print("MainPump is blocked: ");
-  //    Serial.print(MainPumpIsBlocked);
-  //  Serial.println(cm1);
 
   // Инициализируем PIN для кнопок
   pinMode(NextPageButtonPin, INPUT_PULLUP);
@@ -341,7 +339,7 @@ void setup()
 
 void loop()
 {
-
+  /* Пример получения значений из консольного COM-порта - иногда необходим при отладке */
   //  if (Serial.available() > 0) {  //если есть доступные данные
   //    // считываем байт
   //    //StreetTank_WaterQuality = Serial.parseInt();
@@ -365,19 +363,23 @@ void loop()
   MainTankLevel();
   StreetTankLevel();
 
-  // Отображение температуры с термопары на MAX6675 (температура в баке с горячей водой) и с DS3231 (температура в доме)
-  HotWaterTemp();
+  // Усредненный расчет температуры с термопары на MAX6675 (температура в баке с горячей водой) и с DS3231 (температура в доме)
+  SaunaStonesTemperature();
+
+  // Получение показаний температуры в доме с RTC
   HomeAirTemp();
 
   StreetTankWaterQualityCheck();
 
-  // Вывод страниц на OLED
+  /* Вывод страниц на LCD */
   ProcessPages();
 
+  /* Обработка логики емкостей */
   Logic_StreetTank();
   Logic_MainTank();
   Logic_HotWaterTank();
 
+  /* Запись значений в EEPROM */
   WriteStates();
 }   /* END LOOP */
 
@@ -553,7 +555,6 @@ void page1()
   }
 
   // Отображение стрелок перехода по страницам
-  //u8g.drawBitmapP( 117 + progress, 3, 1, 10, right_arrow);
   DrawMenuArrows();
 }
 
@@ -576,22 +577,38 @@ void page2()
   u8g.setPrintPos(20, 64);
   u8g.print("  0");
 
-  // Иконка термометра №1 - тем.воздуха
-  u8g.drawBitmapP(62, 18, 2, 16, ico_air_temp);
+  if (tmpChange == false)
+  {
+    // Иконка термометра №1 - тем.воздуха
+    u8g.drawBitmapP(62, 18, 2, 16, ico_air_temp);
 
-  // Значение температуры воздуха в парилке
-  u8g.setFont(u8g_font_profont22);
-  u8g.setPrintPos(80, 32);
-  //u8g.print(HotWater_Temp + 53);
-  u8g.print(HomeAir_Temp);
+    // Значение температуры воздуха в парилке
+    u8g.setFont(u8g_font_profont22);
+    u8g.setPrintPos(82, 34);
+    u8g.print(sauna_air_Temp);
+    u8g.print(char(176));
 
-  // Иконка термометра №2 - температура воды в баке с горячей водой
-  u8g.drawBitmapP(62, 45, 2, 16, ico_water_temp);
+  }
+  else
+  {
+    // Иконка термометра №2 - температура воды в баке с горячей водой
+    u8g.drawBitmapP(62, 18, 2, 16, ico_water_temp);
+
+    // Значение температуры воды в парилке
+    u8g.setFont(u8g_font_profont22);
+    u8g.setPrintPos(82, 34);
+    u8g.print(sauna_water_Temp);
+    u8g.print(char(176));
+  }
+
+  // Иконка термометра №3 - температура камней в каменке
+  u8g.drawBitmapP(62, 45, 2, 16, ico_stones_temp);
 
   // Значение температуры бака с горячей водой
   u8g.setFont(u8g_font_profont22);
-  u8g.setPrintPos(80, 61);
-  u8g.print(HotWater_Temp);
+  u8g.setPrintPos(82, 61);
+  u8g.print(sauna_stones_Temp);
+  u8g.print(char(176));
 
   // Уровень емкости с горячей водой (градация 0-50-100%) - всего три уровня
   u8g.drawFrame(48, 18, 12, 46);
@@ -635,6 +652,7 @@ void page2()
   }
   /* END --------------------------  Иконка блокировки горячей воды ---------------------------- END */
 
+  /* Пример работы с форматной строкой - возможно понадобится в будущем */
   /* char text_buffer[16]; // Массив для вывода
     //  u8g.setFont(u8g_font_profont22);
     //  u8g.setPrintPos(26, 36);
@@ -646,21 +664,19 @@ void page2()
     //  u8g.print(text_buffer); */
 
   // Отображение стрелок перехода по страницам
-  //u8g.drawBitmapP( 6 - progress, 3, 1, 10, left_arrow);
-  //u8g.drawBitmapP( 117 + progress, 3, 1, 10, right_arrow);
   DrawMenuArrows();
 }
 
 // Вывод страницы №3
 //void page3()
 //{
-//  char sauna_temp[] = {char(177), char(208), char(221), char(239), ' ', 't', '1',  '\0'};
+//  char sauna_air_Temp[] = {char(177), char(208), char(221), char(239), ' ', 't', '1',  '\0'};
 //
 //  // Оформление страницы
 //  u8g.drawRFrame(0, 0, 128, 16, 3);
 //  u8g.setFont(u8g_font_unifont_0_8);
 //  u8g.setPrintPos(40, 12);
-//  u8g.print(sauna_temp);
+//  u8g.print(sauna_air_Temp);
 //
 //  // Иконка термометра №1 - тем.воздуха
 //  u8g.drawBitmapP(2, 20, 2, 16, ico_air_temp);
@@ -669,7 +685,7 @@ void page2()
 //  //u8g.setFont(u8g_font_fub14n);
 //  u8g.setFont(u8g_font_profont22);
 //  u8g.setPrintPos(2, 63);
-//  u8g.print(HotWater_Temp + 53);
+//  u8g.print(sauna_stones_Temp + 53);
 //
 //  u8g.setFont(u8g_font_unifont_0_8);
 //  u8g.setPrintPos(20, 28);
@@ -705,21 +721,27 @@ void page2()
 void SystemCounters()
 {
   currentMillis = millis();
-  //  if (currentMillis - previousMillis >= interval) {
-  //    // save the last time you blinked the LED
-  //    previousMillis = currentMillis;
-  //    x1++;
-  //    if (x1 >= 76) {
-  //      x1 = 0;
-  //    }
-  //  }
 
+  /* Управление уровнем яркости LCD дисплея - вход в "спящий режим" */
   if ((currentMillis - previousMillisBLK >= BrightnessInterval) && (SleepMode == false)) {
     previousMillisBLK = currentMillis;
     LED12864_Brightness(SleepBrightness);
     SleepMode = true;
   }
 
+  /* Переключение отображения температуры воздуха/воды на странице "БАНЯ" */
+  if (currentMillis - previousMillisTMP >= temperature_change_timer)  {
+    previousMillisTMP = currentMillis;
+    if (tmpChange == false) {
+      tmpChange = true;
+    }
+    else
+    {
+      tmpChange = false;
+    }
+  }
+
+  /* Счетчик progress - для анимации процессов на LCD-экране */
   if (progress < 3 ) {
     progress++;
   }
@@ -776,7 +798,7 @@ void ProcessButtons()
 
 }
 
-// Условия для вывода нужной страницы на OLED
+// Условия для вывода нужной страницы на LCD
 void ProcessPages()
 {
   if (CurrentPage == 1)
@@ -784,9 +806,7 @@ void ProcessPages()
     u8g.sleepOff();
     u8g.firstPage();
     do {
-      //Блок отображения страницы №1 на OLED
-      page1();
-
+      page1();                    // Отображение страницы №1 на LCD
     } while ( u8g.nextPage() );
   }
 
@@ -795,9 +815,7 @@ void ProcessPages()
     u8g.sleepOff();
     u8g.firstPage();
     do {
-      //Блок отображения страницы №2 на OLED
-      page2();
-
+      page2();                    // Отображение страницы №2 на LCD
     } while ( u8g.nextPage() );
   }
 
@@ -898,7 +916,7 @@ void Logic_StreetTank()
   // Если уровень уличной емкости достиг критического минимума - запускаем режим наполнения из скважины */
   if (StreetTankPercent < StreetTank_MinBlock)
   {
-    //TurnOn(ChinkRelay);  /* Включение реле скважинного насоса */
+    TurnOn(ChinkRelay);       /* Включение реле скважинного насоса */
     StreetTankStatus = 4;
   }
   else
@@ -908,7 +926,7 @@ void Logic_StreetTank()
 
   if (StreetTankPercent >= 100 )
   {
-    //TurnOff(ChinkRelay);  /* Выключение реле сважинного насоса */
+    TurnOff(ChinkRelay);      /* Выключение реле сважинного насоса */
     StreetTankStatus = 1;
   }
 
@@ -966,34 +984,32 @@ void LED12864_Brightness(int BL_brightness)
 // Температура в доме
 void HomeAirTemp()
 {
-  HomeAir_Temp = clock.readTemperature();
+  home_air_Temp = clock.readTemperature();
 }
 
 // Температура бака с горячей водой
 // также применяем коэффициент сглаживания показаний (как и при работе с ультразвуковыми датчиками) - для устранения "шума"
-void HotWaterTemp()
+void SaunaStonesTemperature()
 {
-  int oldsensorValue = HotWater_Temp;
+  int oldsensorValue = sauna_stones_Temp;
 
   if (progress == 1 )
   {
-    HotWater_Temp = SlaveHotWater_temp;
-    HotWater_Temp = (oldsensorValue * (averageFactor - 1) + HotWater_Temp) / averageFactor;
-
-    //y1 = map(HotWater_Temp + 53, 0, 120, 63, 18);                // Вместо HotWater_Temp + 53 - вывести показания датчика температуры воздуха
-    //map - на заметку взять!
+    sauna_stones_Temp = sauna_stones_temp_Raw;
+    sauna_stones_Temp = (oldsensorValue * (averageFactor - 1) + sauna_stones_Temp) / averageFactor;
   }
 }
 
 void i2cReadSlave()
 {
-  int respVals[6];
-  Wire.requestFrom(8, 6);     // Запрашиваем 6 байт из Slave-контроллера по i2c адрес #8
+  const int argCount = 8;             // Количество аргументов массива получаемых со Slave-контроллера !!!Обязательно проверить размерность на соответствие с кодом Slave'а
+  int respVals[argCount];             // Создаем переменную (массив - размерность = argCount) для получения данных со Slave-контроллера
+  Wire.requestFrom(8, argCount);      // Запрашиваем "argCount" байт из Slave-контроллера по i2c адрес #8
   uint8_t respIoIndex = 0;
 
   while (Wire.available())
   {
-    for (byte r = 0; r < 6; r++)
+    for (byte r = 0; r < argCount; r++)
       if (Wire.available()) {
         respVals[respIoIndex] = (uint8_t)Wire.read();
         respIoIndex++;
@@ -1011,11 +1027,15 @@ void i2cReadSlave()
     dataA = respVals[3];
     dataB = respVals[4];
 
-    SlaveHotWater_temp  = dataA +  averageFactor + (dataB * 0.1);   // Собираем float из целой и дробной частей
+    sauna_stones_temp_Raw = (respVals[4] << 8) | respVals[3];
+    //sauna_stones_temp_Raw  = dataA +  averageFactor + (dataB * 0.1);   // Собираем float из целой и дробной частей
 
     wq_raw = respVals[5];
-  }
 
+    sauna_air_Temp = respVals[6];
+    sauna_water_Temp = respVals[7];
+    //Serial.println(sauna_air_Temp);
+  }
 }
 
 // Получение уровня домашней емкости в %
