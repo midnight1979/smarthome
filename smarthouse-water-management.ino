@@ -201,9 +201,9 @@ int MainTank_MinBlock     = 10;             // Минимальное колич
 int HotWater_Unblock      = 70;             // Количество воды в домашней емкости в % при котором разблокируется пополнение бака горячей воды
 
 //-------- Уличная емкость ----------
-int StreetTank_Height         = 98;         // Высота домашней емкости в см.
+int StreetTank_Height         = 110;         // Высота домашней емкости в см.
 int StreetTank_Max            = 10;         // Максимальный уровень воды домашней емкости в см. (от датчика до поверхности воды)
-int StreetTank_MinBlock       = 10;         // Минимальное количество воды уличной емкости в % чтобы заблокировать работу насоса
+int StreetTank_MinBlock       = 15;         // Минимальное количество воды уличной емкости в % чтобы заблокировать работу насоса
 int StreetTank_WaterQuality   = 0;          // Качество воды в уличных емкостях (прозрачность)
 
 //-------- Статусы емкостей ---------
@@ -220,6 +220,7 @@ int HotWaterTankPercent   = 0;              // Объем воды в % для �
 int progress                      = 0;      // Переменная для цикличного индикатора процесса работы (анимирования символов)
 unsigned long previousMillisBLK   = 0;      // Счетчик для регулировки подсветки LCD12864 (режим сна через BrightnessInterval)
 unsigned long previousMillisTMP   = 0;      // Счетчик смены показаний температуры
+unsigned long previousMillisINIT  = 0;      // Таймаут инициализации при включении
 unsigned long currentMillis       = 0;
 
 // Блокировки емкостей и насосов
@@ -267,9 +268,27 @@ void setup()
   pinMode(BLK, OUTPUT);
   LED12864_Brightness(WorkBrightness);
 
+  /* Даем время на инициализацию Slave-контроллеров */
+  for (int i = 0; i < 6; i++)
+  {
+    u8g.firstPage();
+    do {
+      u8g.setFont(u8g_font_unifont_0_8);
+      u8g.setPrintPos(10, 22);
+      u8g.print("Initialize...");
+      u8g.setPrintPos(54, 44);
+      u8g.print(map(i, 0, 5, 1, 100));
+      u8g.print("%");
+      u8g.drawBox(0, 52, map(i, 0, 5, 1, 128), 5);
+    } while ( u8g.nextPage() );
+    delay(500);
+  }
+  delay(500);
+  /* Таймаут инициализации завершен */
+
   /* Инициализация I2C для расширителя портов PCF8574
     Адрес согласно установленных перемычек A0-A1-A2 (0x27 - без перемычек) */
-  pcf.begin(0x27);
+  pcf.begin(0x20);
 
   /* Установка всех 8 портов PCF8574 на выход */
   pcf.pinMode(0, OUTPUT);
@@ -334,7 +353,7 @@ void setup()
 
   // Закомментирована кнопка PREV - планируется перенос кнопок в блок в резисторами (работа всех кнопок через PIN(2)
   //pinMode(PrevPageButtonPin, INPUT_PULLUP);
-
+  //delay(2000);
 }
 
 void loop()
@@ -410,15 +429,16 @@ void StreetTankLevel()
 {
   int oldsensorValue = cm2;
   cm2 = temp_cm2;
-  //  Serial.print("CM2 before: ");
-  //  Serial.print(cm2);
-  //  Serial.println();
+  //Serial.print("CM2 before: ");
+  //Serial.print(cm2);
+  //Serial.println();
 
   if ((cm2 > StreetTank_Height) || (cm2 < 0))
   {
     cm2 = StreetTank_Height;
   }
   cm2 = (oldsensorValue * (averageFactor - 1) + cm2) / averageFactor;
+
   StreetTankPercent = 100 - ((cm2 - StreetTank_Max) * 100 / (StreetTank_Height - StreetTank_Max));       //Текущий уровень в %
   //  Serial.print("CM2 after: ");
   //  Serial.print(cm2);
@@ -530,9 +550,10 @@ void page1()
   }
 
   if (MainTankStatus == 2) {                                      // Анимация при наполнении
-    u8g.setFont(u8g_font_unifont_0_8);
-    u8g.setPrintPos(14 + (8 * progress), 64);
-    u8g.print(">");
+    //u8g.setFont(u8g_font_unifont_0_8);
+    u8g.drawBitmapP(14 + (8 * progress), 54, 1, 10, right_arrow);
+    //u8g.setPrintPos(14 + (8 * progress), 64);
+    //u8g.print(">");
   }
 
   if ((MainTankStatus == 4) && (progress == 1)) {                 // Мигающая иконка при ошибке
@@ -545,9 +566,10 @@ void page1()
   }
 
   if (StreetTankStatus == 2) {              // При наполнении анимация
-    u8g.setFont(u8g_font_unifont_0_8);
-    u8g.setPrintPos(68 + (8 * progress), 64);
-    u8g.print(">");
+    //    u8g.setFont(u8g_font_unifont_0_8);
+    //    u8g.setPrintPos(68 + (8 * progress), 64);
+    //    u8g.print(">");
+    u8g.drawBitmapP(68 + (8 * progress), 54, 1, 10, right_arrow);
   }
 
   if ((StreetTankStatus == 4) && (progress == 1)) {              // При ошибке анимация
@@ -636,9 +658,7 @@ void page2()
   }
 
   if (HotWaterTankStatus == 2) {                         // Анимация при наполнении
-    u8g.setFont(u8g_font_unifont_0_8);
-    u8g.setPrintPos(8 * progress, 64);
-    u8g.print(">");
+    u8g.drawBitmapP(8 * progress, 54, 1, 10, right_arrow);
   }
 
   if ((HotWaterTankStatus == 4) && (progress == 1)) {    // Мигающая иконка при ошибке
@@ -865,6 +885,7 @@ void Logic_MainTank()
     else
     {
       TurnOff(StreetTankRelay);
+      MainTankStatus = 4;
     }
   }
 
@@ -903,7 +924,7 @@ void Logic_MainTank()
   {
     TurnOff(MainTankRelay);       //Выключаем реле блокировки насосной станции
     MainPumpIsBlocked = false;    //Снимаем программную блокировку насосной станции
-    if (MainTankStatus != 2 )
+    if ((MainTankStatus != 2) && (MainTankStatus != 4))
     {
       MainTankStatus = 1;
     }
@@ -916,7 +937,7 @@ void Logic_StreetTank()
   // Если уровень уличной емкости достиг критического минимума - запускаем режим наполнения из скважины */
   if (StreetTankPercent < StreetTank_MinBlock)
   {
-    TurnOn(ChinkRelay);       /* Включение реле скважинного насоса */
+    //TurnOn(ChinkRelay);       /* Включение реле скважинного насоса */
     StreetTankStatus = 4;
   }
   else
@@ -926,7 +947,7 @@ void Logic_StreetTank()
 
   if (StreetTankPercent >= 100 )
   {
-    TurnOff(ChinkRelay);      /* Выключение реле сважинного насоса */
+    //TurnOff(ChinkRelay);      /* Выключение реле сважинного насоса */
     StreetTankStatus = 1;
   }
 
@@ -937,7 +958,7 @@ void Logic_StreetTank()
 void Logic_HotWaterTank()
 {
   // Наполнение
-  if (HotWaterTankPercent < 1)
+  if (HotWaterTankPercent < 2)
   {
     if (HotWaterTankIsBlocked == false)
     {
