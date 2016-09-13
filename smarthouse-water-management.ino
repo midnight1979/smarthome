@@ -254,7 +254,7 @@ int home_air_Temp  = 0;
 // Температуры с терморезисторов
 int sauna_air_Temp    = 0;        // Температура воздуха в парилке
 int sauna_water_Temp  = 0;        // Температура воды в парилке
-
+int street_Temp       = 0;        // Температура воздуха на улице
 
 void setup()
 {
@@ -623,14 +623,27 @@ void page2()
     u8g.print(char(176));
   }
 
-  // Иконка термометра №3 - температура камней в каменке
-  u8g.drawBitmapP(62, 45, 2, 16, ico_stones_temp);
+  if (tmpChange == false)
+  {
+    // Иконка термометра №3 - температура камней в каменке
+    u8g.drawBitmapP(62, 45, 2, 16, ico_stones_temp);
 
-  // Значение температуры бака с горячей водой
-  u8g.setFont(u8g_font_profont22);
-  u8g.setPrintPos(82, 61);
-  u8g.print(sauna_stones_Temp);
-  u8g.print(char(176));
+    // Значение температуры камней
+    u8g.setFont(u8g_font_profont22);
+    u8g.setPrintPos(82, 61);
+    u8g.print(sauna_stones_Temp);
+    u8g.print(char(176));
+  }
+  else
+  {
+    // Иконка термометра №1 - тем.воздуха
+    u8g.drawBitmapP(62, 45, 2, 16, ico_air_temp);
+    // Значение температуры улицы
+    u8g.setFont(u8g_font_profont22);
+    u8g.setPrintPos(82, 61);
+    u8g.print(street_Temp);
+    u8g.print(char(176));
+  }
 
   // Уровень емкости с горячей водой (градация 0-50-100%) - всего три уровня
   u8g.drawFrame(48, 18, 12, 46);
@@ -1023,7 +1036,7 @@ void SaunaStonesTemperature()
 
 void i2cReadSlave()
 {
-  const int argCount = 8;             // Количество аргументов массива получаемых со Slave-контроллера !!!Обязательно проверить размерность на соответствие с кодом Slave'а
+  const int argCount = 9;             // Количество аргументов массива получаемых со Slave-контроллера !!!Обязательно проверить размерность на соответствие с кодом Slave'а
   int respVals[argCount];             // Создаем переменную (массив - размерность = argCount) для получения данных со Slave-контроллера
   Wire.requestFrom(8, argCount);      // Запрашиваем "argCount" байт из Slave-контроллера по i2c адрес #8
   uint8_t respIoIndex = 0;
@@ -1055,7 +1068,8 @@ void i2cReadSlave()
 
     sauna_air_Temp = respVals[6];
     sauna_water_Temp = respVals[7];
-    //Serial.println(sauna_air_Temp);
+    street_Temp = respVals[8];
+    //Serial.println(street_Temp);
   }
 }
 
